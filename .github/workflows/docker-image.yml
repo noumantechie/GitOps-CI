@@ -109,8 +109,8 @@ jobs:
       - name: Commit and push
         working-directory: cd
         run: |
-          git config user.name "ci-bot."
-          git config user.email "ci-bot@user.noreply.github.com."
+          git config user.name "ci-bot"
+          git config user.email "ci-bot@user.noreply.github.com"
           git add .
           git commit -m "update images to $IMAGE_TAG" || echo "no changes"
           git push
