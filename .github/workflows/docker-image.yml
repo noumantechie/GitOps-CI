@@ -74,7 +74,7 @@ jobs:
       - name: Checkout CD repo
         uses: actions/checkout@v4
         with:
-          repository: noumantechie/3-Tier-GitOps-CD
+          repository: noumantechie/GitOps-CD
           ref: main
           token: ${{ secrets.CD_REPO_TOKEN }}
           path: cd
