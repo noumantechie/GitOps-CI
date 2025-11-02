@@ -1,31 +1,33 @@
-name: Simple Node.js CI for ArgoCD Demo
+name: CI Pipeline with Semantic Versioning
 
 on:
   push:
     branches: [ main ]
 
 env:
-  IMAGE_TAG: ${{ github.sha }}
+  # Semantic version: MAJOR.MINOR.PATCH-BUILD_NUMBER
+  VERSION: 1.0.0-${{ github.run_number }}
+  COMMIT_SHA: ${{ github.sha }}
 
 jobs:
-  # -----------------------------
-  # 1️⃣ Build Backend Docker Image
-  # -----------------------------
+  # ═══════════════════════════════════════════════════════
+  # Backend Build Job
+  # ═══════════════════════════════════════════════════════
   build_backend:
     runs-on: ubuntu-latest
     steps:
-      # checkout your source code
+      # Checkout source code
       - name: Checkout code
         uses: actions/checkout@v4
-
-      # login to Docker Hub using your credentials
+  
+      # Login to Docker Hub
       - name: Login to Docker Hub
         uses: docker/login-action@v3
         with:
           username: ${{ vars.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      # build and push backend image
+      # Build and push backend image
       - name: Build & Push backend image
         uses: docker/build-push-action@v6
         with:
@@ -33,24 +35,31 @@ jobs:
           file: ./api/Dockerfile
           push: true
           tags: |
+            noman071/backend:${{ env.VERSION }}
             noman071/backend:latest
-            noman071/backend:${{ env.IMAGE_TAG }}
+          labels: |
+            org.opencontainers.image.version=${{ env.VERSION }}
+            org.opencontainers.image.revision=${{ env.COMMIT_SHA }}
+            org.opencontainers.image.created=${{ github.event.repository.updated_at }}
 
-  # -----------------------------
-  # 2️⃣ Build Frontend Docker Image
-  # -----------------------------
+  # ═══════════════════════════════════════════════════════
+  # Frontend Build Job
+  # ═══════════════════════════════════════════════════════
   build_frontend:
     runs-on: ubuntu-latest
     steps:
+      # Checkout source code
       - name: Checkout code
         uses: actions/checkout@v4
 
+      # Login to Docker Hub
       - name: Login to Docker Hub
         uses: docker/login-action@v3
         with:
           username: ${{ vars.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
+      # Build and push frontend image
       - name: Build & Push frontend image
         uses: docker/build-push-action@v6
         with:
@@ -58,59 +67,18 @@ jobs:
           file: ./client/Dockerfile
           push: true
           tags: |
+            noman071/frontend:${{ env.VERSION }}
             noman071/frontend:latest
-            noman071/frontend:${{ env.IMAGE_TAG }}
+          labels: |
+            org.opencontainers.image.version=${{ env.VERSION }}
+            org.opencontainers.image.revision=${{ env.COMMIT_SHA }}
+            org.opencontainers.image.created=${{ github.event.repository.updated_at }}
 
-  # -----------------------------
-  # 3️⃣ Update CD Repo with new tags
-  # -----------------------------
-  update_cd_repo:
-    runs-on: ubuntu-latest
-    needs:
-      - build_backend
-      - build_frontend
-    steps:
-      # checkout your CD repo (where ArgoCD watches)
-      - name: Checkout CD repo
-        uses: actions/checkout@v4
-        with:
-          repository: noumantechie/GitOps-CD
-          ref: main
-          token: ${{ secrets.CD_REPO_TOKEN }}
-          path: cd
-
-      # install yq for YAML editing
-      - name: Install yq
-        run: |
-          curl -sL https://github.com/mikefarah/yq/releases/download/v4.44.3/yq_linux_amd64 -o yq
-          sudo install yq /usr/local/bin/yq
-
-      # update Deployment YAMLs with new image tags
-      - name: Update image tags
-        working-directory: cd
-        env:
-          IMAGE_TAG: ${{ env.IMAGE_TAG }}
-        run: |
-          yq -i '
-            (. | select(.kind=="Deployment")
-             | .spec.template.spec.containers[] 
-             | select(.name=="backend") 
-             | .image) = "noman071/backend:" + strenv(IMAGE_TAG)
-          ' k8s-prod/backend.yaml
-
-          yq -i '
-            (. | select(.kind=="Deployment")
-             | .spec.template.spec.containers[] 
-             | select(.name=="frontend") 
-             | .image) = "noman071/frontend:" + strenv(IMAGE_TAG)
-          ' k8s-prod/frontend.yaml
-
-      # commit and push new tags to CD repo
-      - name: Commit and push
-        working-directory: cd
-        run: |
-          git config user.name "ci-bot."
-          git config user.email "ci-bot@user.noreply.github.com."
-          git add .
-          git commit -m "update images to $IMAGE_TAG" || echo "no changes"
-          git push
+  # ═══════════════════════════════════════════════════════
+  # ✅ NO update_cd_repo JOB!
+  # ArgoCD Image Updater will automatically:
+  # 1. Detect new images on Docker Hub
+  # 2. Update kustomization.yaml in CD repo
+  # 3. Commit changes to Git
+  # 4. Trigger ArgoCD sync
+  # ═══════════════════════════════════════════════════════
